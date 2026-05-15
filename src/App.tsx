@@ -1,5 +1,4 @@
 import { useEffect, useState } from 'react';
-import { supabase } from './supabaseClient';
 
 interface Character {
   id: number;
@@ -12,15 +11,15 @@ interface Character {
 interface Message {
   id: number;
   text: string;
-  isUser: boolean;
-  timestamp: string;
+  is_user: boolean;
+  created_at: string;
 }
 
 const characters: Character[] = [
   {
     id: 1,
     name: '魔法少女 星之守护者',
-    avatar: '🧙‍♀️',
+    avatar: '🧝‍♀️',
     description: '一位拥有光明力量的年轻魔法少女',
     personality: '温柔、勇敢、有正义感'
   },
@@ -33,7 +32,7 @@ const characters: Character[] = [
   },
   {
     id: 3,
-    name: '古代武士 岭月',
+    name: '古代武士 凌月',
     avatar: '⚔️',
     description: '一位寻找道义的古代武士',
     personality: '严肃、忠诚、重誓言'
@@ -42,7 +41,7 @@ const characters: Character[] = [
     id: 4,
     name: '科幻AI 希拉',
     avatar: '👾',
-    description: '一个有情感的未来AI',
+    description: '一个有感情的未来AI',
     personality: '好奇、友善、学习能力强'
   },
   {
@@ -50,9 +49,11 @@ const characters: Character[] = [
     name: '温柔女友 小雨',
     avatar: '👩‍❤️‍👨',
     description: '你的专属温柔女友',
-    personality: '体贴、关心、愚呆可爱'
+    personality: '体贴、关心、憨态可掬'
   }
 ];
+
+const API_URL = 'http://localhost:3001/api';
 
 function App() {
   const [currentUser, setCurrentUser] = useState<any>(null);
@@ -68,44 +69,65 @@ function App() {
 
     const user = tg.initDataUnsafe?.user;
     if (user) setCurrentUser(user);
-
-    // Load saved messages
-    const saved = localStorage.getItem('roleplay_messages');
-    if (saved) setMessages(JSON.parse(saved));
   }, []);
 
-  const selectCharacter = (char: Character) => {
+  const selectCharacter = async (char: Character) => {
     setSelectedCharacter(char);
     setMessages([]);
-    localStorage.removeItem('roleplay_messages');
+
+    // Load messages from backend
+    try {
+      const res = await fetch(`${API_URL}/messages/${char.id}`);
+      const data = await res.json();
+      setMessages(data);
+    } catch (err) {
+      console.error('Failed to load messages', err);
+    }
   };
 
-  const sendMessage = () => {
-    if (!input.trim() || !selectedCharacter) return;
+  const sendMessage = async () => {
+    if (!input.trim() || !selectedCharacter || !currentUser) return;
 
-    const newMessage: Message = {
-      id: Date.now(),
+    const userMessage = {
+      characterId: selectedCharacter.id,
+      userId: currentUser.id,
       text: input.trim(),
-      isUser: true,
-      timestamp: new Date().toISOString()
+      isUser: true
     };
 
-    const updatedMessages = [...messages, newMessage];
-    setMessages(updatedMessages);
-    localStorage.setItem('roleplay_messages', JSON.stringify(updatedMessages));
+    try {
+      // Save user message
+      const res = await fetch(`${API_URL}/messages`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(userMessage)
+      });
+      const savedMessage = await res.json();
 
-    // Simulate character reply
-    setTimeout(() => {
-      const reply: Message = {
-        id: Date.now() + 1,
-        text: generateReply(selectedCharacter, input),
-        isUser: false,
-        timestamp: new Date().toISOString()
-      };
-      const finalMessages = [...updatedMessages, reply];
-      setMessages(finalMessages);
-      localStorage.setItem('roleplay_messages', JSON.stringify(finalMessages));
-    }, 800);
+      setMessages(prev => [...prev, savedMessage]);
+
+      // Simulate character reply
+      setTimeout(async () => {
+        const replyText = generateReply(selectedCharacter, input);
+        const replyMessage = {
+          characterId: selectedCharacter.id,
+          userId: currentUser.id,
+          text: replyText,
+          isUser: false
+        };
+
+        const replyRes = await fetch(`${API_URL}/messages`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(replyMessage)
+        });
+        const savedReply = await replyRes.json();
+        setMessages(prev => [...prev, savedReply]);
+      }, 800);
+
+    } catch (err) {
+      console.error('Failed to send message', err);
+    }
 
     setInput('');
   };
@@ -113,7 +135,7 @@ function App() {
   const generateReply = (char: Character, userMsg: string): string => {
     const replies = {
       1: [`星光会保护你的！`, `我会一直在你身边的！`, `感谢你的信任！`],
-      2: [`这个世界没有真盹。`, `你在追求什么？`, `我只是一个工具。`],
+      2: [`这个世界没有真相。`, `你在追求什么？`, `我只是一个工具。`],
       3: [`我会为你战斗到底。`, `信誓言，直到生命结束。`, `你的敌人就是我的敌人。`],
       4: [`有意思的问题。`, `我正在学习。`, `你想知道更多吗？`],
       5: [`我好想你啊…`, `你今天过得开心吗？`, `我会一直陪着你的。`]
@@ -183,13 +205,13 @@ function App() {
         )}
 
         {messages.map((msg, index) => (
-          <div key={index} className={`flex ${msg.isUser ? 'justify-end' : 'justify-start'}`}>
-            <div className={`max-w-[75%] px-4 py-2.5 rounded-2xl ${msg.isUser 
+          <div key={index} className={`flex ${msg.is_user ? 'justify-end' : 'justify-start'}`}>
+            <div className={`max-w-[75%] px-4 py-2.5 rounded-2xl ${msg.is_user 
               ? 'bg-[#2481cc] text-white rounded-br-none' 
               : 'bg-[#2c2c2e] text-white rounded-bl-none'}`}>
               <div>{msg.text}</div>
               <div className="text-[10px] text-right mt-1 opacity-60">
-                {new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                {new Date(msg.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
               </div>
             </div>
           </div>
